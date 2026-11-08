@@ -1,0 +1,36 @@
+{
+  "name": "akiles-athlete",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10 <11"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "esbuild": "^0.28.2",
+    "lucide-react": "0.468.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-router-dom": "^7.18.5",
+    "recharts": "2.15.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "typescript": "5.7.3",
+    "vite": "^6.4.5"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true
+  }
+}
