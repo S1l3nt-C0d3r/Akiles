@@ -46,7 +46,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-const API = "http://localhost:4100/api";
+const API = import.meta.env.VITE_API_URL || "http://localhost:4100/api";
 type Workout = {
 	id: string;
 	title: string;
