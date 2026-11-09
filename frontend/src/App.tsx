@@ -59,22 +59,13 @@ type Workout = {
 	rpe: number;
 	notes: string;
 	completed: boolean;
+	source_key?: string | null;
 };
-type AssignedWorkout = {
+type CoachNote = {
 	id: string;
-	title: string;
-	date: string;
-	time?: string;
-	type?: string;
-	category?: string;
-	duration?: number;
-	mode?: string;
-	sets?: number;
-	reps?: number;
-	rounds?: number;
-	notes?: string;
-	completed?: boolean;
-	campId?: string;
+	athleteId: string;
+	message: string;
+	createdAt: string;
 };
 type Coach = {
 	id: string;
@@ -146,11 +137,11 @@ function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [page, setPage] = useState<string>("dashboard");
 	const [workouts, setWorkouts] = useState<Workout[]>([]);
-	const [assignedWorkouts, setAssignedWorkouts] = useState<AssignedWorkout[]>([]);
 	const [coaches, setCoaches] = useState<Coach[]>([]);
 	const [invitations, setInvitations] = useState<any[]>([]);
 	const [relationship, setRelationship] = useState<any | null>(null);
 	const [feedback, setFeedback] = useState<any[]>([]);
+	const [coachNotes, setCoachNotes] = useState<CoachNote[]>([]);
 	const [profile, setProfile] = useState<any>({
 		name: "",
 		email: "",
@@ -173,87 +164,52 @@ function App() {
 		if (!t) return;
 		setLoading(true);
 		try {
-			// Authenticate before requesting dashboard data. A stale token must not
-			// be allowed to produce a partially initialised user object.
 			const me = await request("/auth/me", {}, t);
-			const account = me?.user;
 			if (
-				!account ||
-				typeof account.name !== "string" ||
-				!account.name.trim() ||
-				typeof account.email !== "string"
+				!me?.user ||
+				typeof me.user.name !== "string" ||
+				!me.user.name.trim()
 			) {
-				throw new ApiError(
-					"Account not found in this database. Please register again.",
-					401,
-				);
+				throw new Error("Account not found. Please sign in again.");
 			}
-			const safeUser = {
-				...account,
-				name: account.name.trim(),
-				email: account.email,
-			};
-			setUser(safeUser);
+			setUser(me.user);
 			setProfile(
-				account.profile || {
-					name: safeUser.name,
-					email: safeUser.email,
+				me.user.profile || {
+					name: me.user.name,
+					email: me.user.email,
 					discipline: "Boxing",
 					weightClass: "",
 					location: "",
 					bio: "",
 				},
 			);
-
-			// Optional dashboard services load independently. A Kyron outage or an
-			// empty endpoint must not log the athlete out or blank the whole app.
 			const results = await Promise.allSettled([
 				request("/workouts", {}, t),
 				request("/coaches", {}, t),
 				request("/onboarding/invitations", {}, t),
 				request("/relationship", {}, t),
 				request("/feedback", {}, t),
-				request("/assigned-workouts", {}, t),
+				request("/coach-notes", {}, t),
 			]);
-			const [w, c, i, rel, f, assigned] = results;
-			if (w.status === "fulfilled")
-				setWorkouts(Array.isArray(w.value.workouts) ? w.value.workouts : []);
-			else setWorkouts([]);
-			if (c.status === "fulfilled")
-				setCoaches(Array.isArray(c.value.coaches) ? c.value.coaches : []);
-			else setCoaches([]);
-			if (i.status === "fulfilled")
-				setInvitations(
-					Array.isArray(i.value.invitations) ? i.value.invitations : [],
-				);
-			else setInvitations([]);
+			const [w, c, i, rel, f, n] = results;
+			if (w.status === "fulfilled") setWorkouts(w.value.workouts || []);
+			if (c.status === "fulfilled") setCoaches(c.value.coaches || []);
+			if (i.status === "fulfilled") setInvitations(i.value.invitations || []);
 			if (rel.status === "fulfilled")
 				setRelationship(rel.value.relationship || null);
-			else setRelationship(null);
-			if (f.status === "fulfilled")
-				setFeedback(Array.isArray(f.value.feedback) ? f.value.feedback : []);
-			else setFeedback([]);
-			if (assigned.status === "fulfilled")
-				setAssignedWorkouts(
-					Array.isArray(assigned.value.workouts) ? assigned.value.workouts : [],
+			if (f.status === "fulfilled") setFeedback(f.value.feedback || []);
+			if (n.status === "fulfilled") setCoachNotes(n.value.notes || []);
+			if (results.some((r) => r.status === "rejected"))
+				setError(
+					"Some Akiles features could not load. Your account is still signed in.",
 				);
-			else setAssignedWorkouts([]);
-			const failed = results.filter((r) => r.status === "rejected");
-			if (failed.length)
-				console.warn("Some Akiles dashboard data could not be loaded:", failed);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : "Could not load account";
 			setError(message);
-			if (e instanceof ApiError && e.status === 401) {
+			if (/401|session|account not found|sign in again/i.test(message)) {
 				localStorage.removeItem("akiles_token");
 				setToken("");
 				setUser(null);
-				setWorkouts([]);
-				setCoaches([]);
-				setInvitations([]);
-				setRelationship(null);
-				setFeedback([]);
-				setAssignedWorkouts([]);
 			}
 		} finally {
 			setLoading(false);
@@ -279,7 +235,6 @@ function App() {
 		setToken("");
 		setUser(null);
 		setWorkouts([]);
-		setAssignedWorkouts([]);
 	};
 	const pendingInvitation = invitations.find((i) => i.status === "pending");
 	const activeCoach = relationship
@@ -327,7 +282,7 @@ function App() {
 			<aside className={`sidebar ${mobileNav ? "open" : ""}`}>
 				<div className="brand">
 					<div className="brand-mark">
-						<img src="/Akiles_logo.png" />
+						<img src="/akiles-mark.png" />
 					</div>
 					<div>
 						<div className="brand-name">AKILES</div>
@@ -363,7 +318,7 @@ function App() {
 							{(user.name || "A").slice(0, 1).toUpperCase()}
 						</div>
 						<div className="user-mini-copy">
-							<b>{user.name}</b>
+							<b>{user.name || "Athlete"}</b>
 							<span>{profile.discipline || "Athlete"}</span>
 						</div>
 						<button title="Sign out" onClick={logout}>
@@ -419,12 +374,12 @@ function App() {
 							pending={pendingInvitation}
 							onNavigate={setPage}
 							feedback={feedback}
+							coachNotes={coachNotes}
 						/>
 					)}
 					{page === "training" && (
 						<Training
 							workouts={workouts}
-							assignedWorkouts={assignedWorkouts}
 							onAdd={() => setShowWorkout(true)}
 							onDelete={async (id: string) => {
 								await request(`/workouts/${id}`, { method: "DELETE" }, token);
@@ -519,7 +474,7 @@ function Auth({ onAuth }: { onAuth: (t: string) => void }) {
 			<div className="auth-art">
 				<div className="auth-brand">
 					<div className="brand-mark">
-						<img src="./Akiles_logo.png"/>
+						<img src="/akiles-mark.png" />
 					</div>
 					<div>
 						<div className="brand-name">AKILES</div>
@@ -540,7 +495,7 @@ function Auth({ onAuth }: { onAuth: (t: string) => void }) {
 						athlete you came here to become.
 					</p>
 					<div className="greek-rule">
-						<span>RISE CHAMPION</span>
+						<span>ΑΡΕΤΗ</span>
 					</div>
 				</div>
 				<div className="auth-foot">
@@ -684,6 +639,7 @@ function Dashboard({
 	pending,
 	onNavigate,
 	feedback,
+	coachNotes,
 }: any) {
 	const latest = [...workouts]
 		.sort((a, b) => b.date.localeCompare(a.date))
@@ -853,6 +809,27 @@ function Dashboard({
 			<section className="panel feedback-panel">
 				<div className="panel-head">
 					<div>
+						<div className="eyebrow">YOUR COACH / TRAINING NOTES</div>
+						<h3>Notes from your coach</h3>
+					</div>
+					<BookOpen size={18} />
+				</div>
+				{coachNotes?.length ? (
+					coachNotes.slice(0, 5).map((n: any) => (
+						<div className="feedback-item" key={n.id}>
+							<p style={{ whiteSpace: "pre-wrap" }}>{n.message}</p>
+							<span>{new Date(n.createdAt).toLocaleString()}</span>
+						</div>
+					))
+				) : (
+					<div className="empty-inline">
+						Your coach's notes will appear here when shared through Kyron.
+					</div>
+				)}
+			</section>
+			<section className="panel feedback-panel">
+				<div className="panel-head">
+					<div>
 						<div className="eyebrow">WORDS FROM YOUR CORNER</div>
 						<h3>Coach feedback</h3>
 					</div>
@@ -893,19 +870,7 @@ function Empty({ icon: Icon, title, text, action, onClick }: any) {
 		</div>
 	);
 }
-function Training({
-	workouts,
-	assignedWorkouts = [],
-	onAdd,
-	onDelete,
-}: any) {
-	const sortedAssigned = [...assignedWorkouts].sort(
-		(a: AssignedWorkout, b: AssignedWorkout) => {
-			const dateCompare = (a.date || "").localeCompare(b.date || "");
-			return dateCompare || (a.time || "").localeCompare(b.time || "");
-		},
-	);
-
+function Training({ workouts, onAdd, onDelete }: any) {
 	return (
 		<>
 			<PageHead
@@ -918,60 +883,6 @@ function Training({
 					</button>
 				}
 			/>
-
-			<section className="panel">
-				<div className="panel-head">
-					<div>
-						<div className="eyebrow">YOUR COACH'S PLAN</div>
-						<h3>Assigned training</h3>
-					</div>
-					<span className="pill">{sortedAssigned.length} SESSIONS</span>
-				</div>
-				{sortedAssigned.length > 0 ? (
-					<div className="table-wrap">
-						<table>
-							<thead>
-								<tr>
-									<th>SESSION</th>
-									<th>DATE</th>
-									<th>TIME</th>
-									<th>DURATION</th>
-									<th>STATUS</th>
-								</tr>
-							</thead>
-							<tbody>
-								{sortedAssigned.map((session: AssignedWorkout) => (
-									<tr key={session.id}>
-										<td>
-											<b>{session.title}</b>
-											<small>{session.type || session.mode || session.category || "Training"}</small>
-										</td>
-										<td>
-											{session.date
-												? new Date(session.date + "T00:00:00").toLocaleDateString("en-IN")
-												: "—"}
-										</td>
-										<td>{session.time || "—"}</td>
-										<td>{session.duration ? `${session.duration} min` : "—"}</td>
-										<td>
-											<span className={`pill ${session.completed ? "active-pill" : "pending-pill"}`}>
-												{session.completed ? "COMPLETED" : "SCHEDULED"}
-											</span>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-				) : (
-					<Empty
-						icon={CalendarDays}
-						title="No assigned sessions yet"
-						text="Training sessions scheduled for you by your Kyron coach will appear here."
-					/>
-				)}
-			</section>
-
 			<div className="training-summary">
 				<div>
 					<span>SESSIONS</span>
@@ -988,12 +899,11 @@ function Training({
 					</b>
 				</div>
 			</div>
-
 			<section className="panel">
 				<div className="panel-head">
 					<div>
-						<div className="eyebrow">YOUR TRAINING HISTORY</div>
-						<h3>Logged sessions</h3>
+						<div className="eyebrow">TRAINING HISTORY</div>
+						<h3>All sessions</h3>
 					</div>
 					<span className="pill">{workouts.length} RECORDS</span>
 				</div>
@@ -1012,21 +922,40 @@ function Training({
 							</thead>
 							<tbody>
 								{[...workouts]
-									.sort((a: Workout, b: Workout) => b.date.localeCompare(a.date))
+									.sort((a: Workout, b: Workout) =>
+										b.date.localeCompare(a.date),
+									)
 									.map((w: Workout) => (
 										<tr key={w.id}>
 											<td>
 												<b>{w.title}</b>
-												<small>{w.category}</small>
+												<small>
+													{w.category}
+													{w.source_key?.startsWith("kyron:")
+														? " · COACH ASSIGNED"
+														: ""}
+												</small>
 											</td>
-											<td>{new Date(w.date + "T00:00:00").toLocaleDateString()}</td>
+											<td>
+												{new Date(w.date + "T00:00:00").toLocaleDateString()}
+											</td>
 											<td>{w.duration} min</td>
 											<td>
-												{w.rounds ? `${w.rounds} rounds` : w.sets ? `${w.sets} × ${w.reps || 0}` : "—"}
+												{w.rounds
+													? `${w.rounds} rounds`
+													: w.sets
+														? `${w.sets} × ${w.reps || 0}`
+														: "—"}
 											</td>
-											<td><span className="intensity">RPE {w.rpe}/10</span></td>
 											<td>
-												<button className="icon-button danger" onClick={() => onDelete(w.id)} title="Delete workout">
+												<span className="intensity">RPE {w.rpe}/10</span>
+											</td>
+											<td>
+												<button
+													className="icon-button danger"
+													onClick={() => onDelete(w.id)}
+													title="Delete workout"
+												>
 													<Trash2 size={15} />
 												</button>
 											</td>
