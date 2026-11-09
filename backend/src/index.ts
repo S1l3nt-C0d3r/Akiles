@@ -577,6 +577,30 @@ app.get("/api/relationship", auth, async (req: Authed, res) => {
 	}
 });
 
+// Coach-assigned sessions fetched from Kyron.
+app.get("/api/assigned-workouts", auth, async (req: Authed, res) => {
+  try {
+    const email = userSummary(req.userId!).email.toLowerCase();
+
+    const data = await kyron(
+      `/assigned-workouts?email=${encodeURIComponent(email)}`,
+    );
+
+    res.json({
+      workouts: Array.isArray(data.workouts) ? data.workouts : [],
+    });
+  } catch (error) {
+    console.error("Could not load Kyron assigned workouts:", error);
+
+    res.status(502).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not load assigned workouts.",
+    });
+  }
+});
+
 // Feedback
 app.get("/api/feedback", auth, (req: Authed, res) => {
 	const feedback = db
