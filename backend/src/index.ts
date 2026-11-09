@@ -358,7 +358,7 @@ app.get("/api/workouts", auth, (req: Authed, res) => {
 	res.json({ workouts: rows });
 });
 
-app.post("/api/workouts", auth, (req: Authed, res) => {
+app.post("/api/workouts", auth, async (req: Authed, res) => {
 	const body = req.body || {};
 
 	if (
@@ -403,39 +403,57 @@ app.post("/api/workouts", auth, (req: Authed, res) => {
 		String(body.notes || "").slice(0, 2000),
 	);
 
+	let kyronSyncStatus: "synced" | "not_connected" | "failed" = "not_connected";
+
 	if (KYRON_URL && INTEGRATION_KEY) {
-		void kyron(
-			`/relationship?email=${encodeURIComponent(userSummary(req.userId!).email)}`,
-		)
-			.then((result: any) => {
-				if (result.relationship?.relationshipId) {
-					return kyron("/workout-completions", {
-						method: "POST",
-						body: JSON.stringify({
-							relationshipId: result.relationship.relationshipId,
-							athleteEmail: userSummary(req.userId!).email,
-							workout: {
-								id,
-								title: body.title,
-								category: body.category,
-								date: body.date,
-								duration: Number(body.duration),
-								sets: body.sets,
-								reps: body.reps,
-								rounds: body.rounds,
-								rpe: Number(body.rpe),
-								notes: body.notes,
-							},
-						}),
-					});
-				}
-			})
-			.catch((error) => {
-				console.error("Workout sync to Kyron failed:", error);
-			});
+		try {
+			const email = userSummary(req.userId!).email.toLowerCase();
+
+			const result = await kyron(
+				`/relationship?email=${encodeURIComponent(email)}`,
+			);
+
+			const relationship = result.relationship;
+
+			if (relationship?.relationshipId && relationship?.athleteId) {
+				await kyron("/workout-completions", {
+					method: "POST",
+					body: JSON.stringify({
+						relationshipId: relationship.relationshipId,
+						athleteId: relationship.athleteId,
+						athleteEmail: email,
+						workout: {
+							id,
+							title: body.title.trim(),
+							category: body.category,
+							date: body.date,
+							duration: Number(body.duration),
+							sets: body.sets ? Number(body.sets) : null,
+							reps: body.reps ? Number(body.reps) : null,
+							rounds: body.rounds ? Number(body.rounds) : null,
+							rpe: Number(body.rpe),
+							notes: String(body.notes || ""),
+						},
+					}),
+				});
+
+				kyronSyncStatus = "synced";
+			} else {
+				console.warn(
+					`Workout ${id} saved locally, but no linked Kyron athlete was found.`,
+				);
+			}
+		} catch (error) {
+			kyronSyncStatus = "failed";
+
+			console.error("Workout sync to Kyron failed:", error);
+		}
 	}
 
-	res.status(201).json({ id });
+	return res.status(201).json({
+		id,
+		kyronSyncStatus,
+	});
 });
 
 app.delete("/api/workouts/:id", auth, (req: Authed, res) => {
@@ -455,6 +473,7 @@ app.delete("/api/workouts/:id", auth, (req: Authed, res) => {
 // Kyron integration
 const KYRON_URL = (process.env.KYRON_API_URL || "").replace(/\/$/, "");
 const INTEGRATION_KEY = process.env.AKILES_INTEGRATION_KEY || "";
+
 
 async function kyron(pathname: string, init: RequestInit = {}) {
 	if (!KYRON_URL || !INTEGRATION_KEY) {
@@ -577,7 +596,7 @@ app.get("/api/relationship", auth, async (req: Authed, res) => {
 	}
 });
 
-// Coach-assigned sessions fetched from Kyron.
+// Assigned training sessions from Kyron
 app.get("/api/assigned-workouts", auth, async (req: Authed, res) => {
   try {
     const email = userSummary(req.userId!).email.toLowerCase();
@@ -600,7 +619,6 @@ app.get("/api/assigned-workouts", auth, async (req: Authed, res) => {
     });
   }
 });
-
 // Feedback
 app.get("/api/feedback", auth, (req: Authed, res) => {
 	const feedback = db

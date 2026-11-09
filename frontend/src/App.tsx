@@ -60,6 +60,22 @@ type Workout = {
 	notes: string;
 	completed: boolean;
 };
+type AssignedWorkout = {
+	id: string;
+	title: string;
+	date: string;
+	time?: string;
+	type?: string;
+	category?: string;
+	duration?: number;
+	mode?: string;
+	sets?: number;
+	reps?: number;
+	rounds?: number;
+	notes?: string;
+	completed?: boolean;
+	campId?: string;
+};
 type Coach = {
 	id: string;
 	name: string;
@@ -130,6 +146,7 @@ function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [page, setPage] = useState<string>("dashboard");
 	const [workouts, setWorkouts] = useState<Workout[]>([]);
+	const [assignedWorkouts, setAssignedWorkouts] = useState<AssignedWorkout[]>([]);
 	const [coaches, setCoaches] = useState<Coach[]>([]);
 	const [invitations, setInvitations] = useState<any[]>([]);
 	const [relationship, setRelationship] = useState<any | null>(null);
@@ -196,8 +213,9 @@ function App() {
 				request("/onboarding/invitations", {}, t),
 				request("/relationship", {}, t),
 				request("/feedback", {}, t),
+				request("/assigned-workouts", {}, t),
 			]);
-			const [w, c, i, rel, f] = results;
+			const [w, c, i, rel, f, assigned] = results;
 			if (w.status === "fulfilled")
 				setWorkouts(Array.isArray(w.value.workouts) ? w.value.workouts : []);
 			else setWorkouts([]);
@@ -215,6 +233,11 @@ function App() {
 			if (f.status === "fulfilled")
 				setFeedback(Array.isArray(f.value.feedback) ? f.value.feedback : []);
 			else setFeedback([]);
+			if (assigned.status === "fulfilled")
+				setAssignedWorkouts(
+					Array.isArray(assigned.value.workouts) ? assigned.value.workouts : [],
+				);
+			else setAssignedWorkouts([]);
 			const failed = results.filter((r) => r.status === "rejected");
 			if (failed.length)
 				console.warn("Some Akiles dashboard data could not be loaded:", failed);
@@ -230,6 +253,7 @@ function App() {
 				setInvitations([]);
 				setRelationship(null);
 				setFeedback([]);
+				setAssignedWorkouts([]);
 			}
 		} finally {
 			setLoading(false);
@@ -255,6 +279,7 @@ function App() {
 		setToken("");
 		setUser(null);
 		setWorkouts([]);
+		setAssignedWorkouts([]);
 	};
 	const pendingInvitation = invitations.find((i) => i.status === "pending");
 	const activeCoach = relationship
@@ -399,6 +424,7 @@ function App() {
 					{page === "training" && (
 						<Training
 							workouts={workouts}
+							assignedWorkouts={assignedWorkouts}
 							onAdd={() => setShowWorkout(true)}
 							onDelete={async (id: string) => {
 								await request(`/workouts/${id}`, { method: "DELETE" }, token);
@@ -867,7 +893,19 @@ function Empty({ icon: Icon, title, text, action, onClick }: any) {
 		</div>
 	);
 }
-function Training({ workouts, onAdd, onDelete }: any) {
+function Training({
+	workouts,
+	assignedWorkouts = [],
+	onAdd,
+	onDelete,
+}: any) {
+	const sortedAssigned = [...assignedWorkouts].sort(
+		(a: AssignedWorkout, b: AssignedWorkout) => {
+			const dateCompare = (a.date || "").localeCompare(b.date || "");
+			return dateCompare || (a.time || "").localeCompare(b.time || "");
+		},
+	);
+
 	return (
 		<>
 			<PageHead
@@ -880,6 +918,60 @@ function Training({ workouts, onAdd, onDelete }: any) {
 					</button>
 				}
 			/>
+
+			<section className="panel">
+				<div className="panel-head">
+					<div>
+						<div className="eyebrow">YOUR COACH'S PLAN</div>
+						<h3>Assigned training</h3>
+					</div>
+					<span className="pill">{sortedAssigned.length} SESSIONS</span>
+				</div>
+				{sortedAssigned.length > 0 ? (
+					<div className="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>SESSION</th>
+									<th>DATE</th>
+									<th>TIME</th>
+									<th>DURATION</th>
+									<th>STATUS</th>
+								</tr>
+							</thead>
+							<tbody>
+								{sortedAssigned.map((session: AssignedWorkout) => (
+									<tr key={session.id}>
+										<td>
+											<b>{session.title}</b>
+											<small>{session.type || session.mode || session.category || "Training"}</small>
+										</td>
+										<td>
+											{session.date
+												? new Date(session.date + "T00:00:00").toLocaleDateString("en-IN")
+												: "—"}
+										</td>
+										<td>{session.time || "—"}</td>
+										<td>{session.duration ? `${session.duration} min` : "—"}</td>
+										<td>
+											<span className={`pill ${session.completed ? "active-pill" : "pending-pill"}`}>
+												{session.completed ? "COMPLETED" : "SCHEDULED"}
+											</span>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<Empty
+						icon={CalendarDays}
+						title="No assigned sessions yet"
+						text="Training sessions scheduled for you by your Kyron coach will appear here."
+					/>
+				)}
+			</section>
+
 			<div className="training-summary">
 				<div>
 					<span>SESSIONS</span>
@@ -896,11 +988,12 @@ function Training({ workouts, onAdd, onDelete }: any) {
 					</b>
 				</div>
 			</div>
+
 			<section className="panel">
 				<div className="panel-head">
 					<div>
-						<div className="eyebrow">TRAINING HISTORY</div>
-						<h3>All sessions</h3>
+						<div className="eyebrow">YOUR TRAINING HISTORY</div>
+						<h3>Logged sessions</h3>
 					</div>
 					<span className="pill">{workouts.length} RECORDS</span>
 				</div>
@@ -919,35 +1012,21 @@ function Training({ workouts, onAdd, onDelete }: any) {
 							</thead>
 							<tbody>
 								{[...workouts]
-									.sort((a: Workout, b: Workout) =>
-										b.date.localeCompare(a.date),
-									)
+									.sort((a: Workout, b: Workout) => b.date.localeCompare(a.date))
 									.map((w: Workout) => (
 										<tr key={w.id}>
 											<td>
 												<b>{w.title}</b>
 												<small>{w.category}</small>
 											</td>
-											<td>
-												{new Date(w.date + "T00:00:00").toLocaleDateString()}
-											</td>
+											<td>{new Date(w.date + "T00:00:00").toLocaleDateString()}</td>
 											<td>{w.duration} min</td>
 											<td>
-												{w.rounds
-													? `${w.rounds} rounds`
-													: w.sets
-														? `${w.sets} × ${w.reps || 0}`
-														: "—"}
+												{w.rounds ? `${w.rounds} rounds` : w.sets ? `${w.sets} × ${w.reps || 0}` : "—"}
 											</td>
+											<td><span className="intensity">RPE {w.rpe}/10</span></td>
 											<td>
-												<span className="intensity">RPE {w.rpe}/10</span>
-											</td>
-											<td>
-												<button
-													className="icon-button danger"
-													onClick={() => onDelete(w.id)}
-													title="Delete workout"
-												>
+												<button className="icon-button danger" onClick={() => onDelete(w.id)} title="Delete workout">
 													<Trash2 size={15} />
 												</button>
 											</td>
