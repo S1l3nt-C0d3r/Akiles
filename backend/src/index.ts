@@ -118,12 +118,10 @@ app.post("/api/auth/register", async (req, res) => {
 		typeof password !== "string" ||
 		password.length < 8
 	)
-		return res
-			.status(400)
-			.json({
-				error:
-					"Enter your name, a valid email and a password of at least 8 characters.",
-			});
+		return res.status(400).json({
+			error:
+				"Enter your name, a valid email and a password of at least 8 characters.",
+		});
 	try {
 		const id = randomUUID();
 		const hash = await bcrypt.hash(password, 12);
@@ -133,14 +131,12 @@ app.post("/api/auth/register", async (req, res) => {
 		db.prepare("INSERT INTO profiles(user_id) VALUES(?)").run(id);
 		return res.status(201).json({ token: issue(id), user: userSummary(id) });
 	} catch (e: any) {
-		return res
-			.status(409)
-			.json({
-				error:
-					e.code === "SQLITE_CONSTRAINT_UNIQUE"
-						? "An account with this email already exists."
-						: "Could not create account.",
-			});
+		return res.status(409).json({
+			error:
+				e.code === "SQLITE_CONSTRAINT_UNIQUE"
+					? "An account with this email already exists."
+					: "Could not create account.",
+		});
 	}
 });
 app.post("/api/auth/login", async (req, res) => {
@@ -195,9 +191,10 @@ app.get("/api/workouts", auth, async (req: Authed, res) => {
 			const completed = (assigned.workouts || []).filter(
 				(w: any) => w && w.completed === true,
 			);
-			const insert = db.prepare(`INSERT OR IGNORE INTO workouts
+			const insert = db.prepare(`INSERT INTO workouts
         (id,user_id,title,category,log_date,duration,sets,reps,rounds,rpe,notes,completed)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,1)`);
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,1)
+        ON CONFLICT(id) DO UPDATE SET rpe=excluded.rpe, notes=excluded.notes, completed=1`);
 			const sync = db.transaction((items: any[]) => {
 				for (const w of items) {
 					const date = /^\d{4}-\d{2}-\d{2}$/.test(String(w.date || ""))
@@ -213,7 +210,7 @@ app.get("/api/workouts", auth, async (req: Authed, res) => {
 						w.sets ?? null,
 						w.reps ?? null,
 						w.rounds ?? null,
-						Math.min(10, Math.max(1, Number(w.rpe) || 5)),
+						Math.min(10, Math.max(1, Number(w.athleteRpe ?? w.rpe) || 5)),
 						String(w.notes || "").slice(0, 2000),
 					);
 				}
@@ -234,6 +231,42 @@ app.get("/api/workouts", auth, async (req: Authed, res) => {
 		.all(req.userId);
 	res.json({ workouts: rows, syncStatus, ...(syncError ? { syncError } : {}) });
 });
+
+// Coach-assigned sessions are returned separately from completed training history.
+app.get("/api/assigned-workouts", auth, async (req: Authed, res) => {
+	if (!KYRON_URL || !INTEGRATION_KEY) {
+		return res.json({ workouts: [], syncStatus: "not_configured" });
+	}
+	try {
+		const email = userSummary(req.userId!).email.toLowerCase();
+		const assigned = await kyron(
+			`/assigned-workouts?email=${encodeURIComponent(email)}`,
+		);
+		const workouts = (assigned.workouts || []).map((w: any) => ({
+			id: String(w.id),
+			title: String(w.title || "Coach-assigned workout"),
+			category: String(w.type || w.category || "Training"),
+			date: String(w.date || ""),
+			time: String(w.time || ""),
+			duration: Number(w.duration) || 0,
+			sets: w.sets ?? null,
+			reps: w.reps ?? null,
+			rounds: w.rounds ?? null,
+			notes: String(w.notes || ""),
+			completed: Boolean(w.completed),
+			rpe: w.athleteRpe == null ? null : Number(w.athleteRpe),
+			campId: w.campId || null,
+		}));
+		res.json({ workouts, syncStatus: "ok" });
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "Could not load coach-assigned workouts.";
+		console.error("Could not load assigned Kyron workouts:", message);
+		res.status(502).json({ error: message, syncStatus: "failed" });
+	}
+});
 app.post("/api/workouts", auth, (req: Authed, res) => {
 	const b = req.body || {};
 	if (
@@ -248,12 +281,10 @@ app.post("/api/workouts", auth, (req: Authed, res) => {
 		Number(b.rpe) < 1 ||
 		Number(b.rpe) > 10
 	)
-		return res
-			.status(400)
-			.json({
-				error:
-					"Provide a title, discipline, valid date, duration and RPE from 1 to 10.",
-			});
+		return res.status(400).json({
+			error:
+				"Provide a title, discipline, valid date, duration and RPE from 1 to 10.",
+		});
 	const id = randomUUID();
 	db.prepare(
 		"INSERT INTO workouts(id,user_id,title,category,log_date,duration,sets,reps,rounds,rpe,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -380,14 +411,12 @@ app.post(
 			);
 			res.json(data);
 		} catch (error) {
-			res
-				.status(502)
-				.json({
-					error:
-						error instanceof Error
-							? error.message
-							: "Could not respond to invitation.",
-				});
+			res.status(502).json({
+				error:
+					error instanceof Error
+						? error.message
+						: "Could not respond to invitation.",
+			});
 		}
 	},
 );

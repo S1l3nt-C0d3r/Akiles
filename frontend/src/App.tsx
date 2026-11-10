@@ -61,6 +61,21 @@ type Workout = {
 	completed: boolean;
 	source_key?: string | null;
 };
+type AssignedWorkout = {
+	id: string;
+	title: string;
+	category: string;
+	date: string;
+	time: string;
+	duration: number;
+	sets?: number | null;
+	reps?: number | null;
+	rounds?: number | null;
+	notes: string;
+	completed: boolean;
+	rpe: number | null;
+	campId?: string | null;
+};
 type CoachNote = {
 	id: string;
 	athleteId: string;
@@ -137,6 +152,9 @@ function App() {
 	const [user, setUser] = useState<User | null>(null);
 	const [page, setPage] = useState<string>("dashboard");
 	const [workouts, setWorkouts] = useState<Workout[]>([]);
+	const [scheduledWorkouts, setScheduledWorkouts] = useState<AssignedWorkout[]>(
+		[],
+	);
 	const [coaches, setCoaches] = useState<Coach[]>([]);
 	const [invitations, setInvitations] = useState<any[]>([]);
 	const [relationship, setRelationship] = useState<any | null>(null);
@@ -185,13 +203,14 @@ function App() {
 			);
 			const results = await Promise.allSettled([
 				request("/workouts", {}, t),
+				request("/assigned-workouts", {}, t),
 				request("/coaches", {}, t),
 				request("/onboarding/invitations", {}, t),
 				request("/relationship", {}, t),
 				request("/feedback", {}, t),
 				request("/coach-notes", {}, t),
 			]);
-			const [w, c, i, rel, f, n] = results;
+			const [w, aw, c, i, rel, f, n] = results;
 			if (w.status === "fulfilled") {
 				setWorkouts(w.value.workouts || []);
 				if (w.value.syncStatus === "failed" && w.value.syncError) {
@@ -203,6 +222,8 @@ function App() {
 					);
 				}
 			}
+			if (aw.status === "fulfilled")
+				setScheduledWorkouts(aw.value.workouts || []);
 			if (c.status === "fulfilled") setCoaches(c.value.coaches || []);
 			if (i.status === "fulfilled") setInvitations(i.value.invitations || []);
 			if (rel.status === "fulfilled")
@@ -249,6 +270,7 @@ function App() {
 		setToken("");
 		setUser(null);
 		setWorkouts([]);
+		setScheduledWorkouts([]);
 	};
 	const pendingInvitation = invitations.find((i) => i.status === "pending");
 	const activeCoach = relationship
@@ -394,6 +416,7 @@ function App() {
 					{page === "training" && (
 						<Training
 							workouts={workouts}
+							scheduledWorkouts={scheduledWorkouts}
 							onAdd={() => setShowWorkout(true)}
 							onDelete={async (id: string) => {
 								await request(`/workouts/${id}`, { method: "DELETE" }, token);
@@ -884,7 +907,13 @@ function Empty({ icon: Icon, title, text, action, onClick }: any) {
 		</div>
 	);
 }
-function Training({ workouts, onAdd, onDelete }: any) {
+function Training({ workouts, scheduledWorkouts, onAdd, onDelete }: any) {
+	const today = dateToday();
+	const upcoming = [...scheduledWorkouts]
+		.filter((w: AssignedWorkout) => !w.completed)
+		.sort((a: AssignedWorkout, b: AssignedWorkout) =>
+			`${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`),
+		);
 	return (
 		<>
 			<PageHead
@@ -897,6 +926,60 @@ function Training({ workouts, onAdd, onDelete }: any) {
 					</button>
 				}
 			/>
+			<section className="panel">
+				<div className="panel-head">
+					<div>
+						<div className="eyebrow">COACH SCHEDULE</div>
+						<h3>Assigned workouts</h3>
+					</div>
+					<span className="pill">{upcoming.length} SCHEDULED</span>
+				</div>
+				{upcoming.length ? (
+					<div className="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>WORKOUT</th>
+									<th>DATE</th>
+									<th>TIME</th>
+									<th>DURATION</th>
+									<th>STATUS</th>
+								</tr>
+							</thead>
+							<tbody>
+								{upcoming.map((w: AssignedWorkout) => (
+									<tr key={w.id}>
+										<td>
+											<b>{w.title}</b>
+											<small>
+												{w.category}
+												{w.notes ? ` · ${w.notes}` : ""}
+											</small>
+										</td>
+										<td>
+											{w.date
+												? new Date(w.date + "T00:00:00").toLocaleDateString()
+												: "—"}
+											{w.date === today ? " · TODAY" : ""}
+										</td>
+										<td>{w.time || "—"}</td>
+										<td>{w.duration ? `${w.duration} min` : "—"}</td>
+										<td>
+											<span className="intensity">Scheduled</span>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<Empty
+						icon={Dumbbell}
+						title="No pending coach workouts"
+						text="Workouts assigned by your coach will appear here."
+					/>
+				)}
+			</section>
 			<div className="training-summary">
 				<div>
 					<span>SESSIONS</span>
@@ -917,7 +1000,7 @@ function Training({ workouts, onAdd, onDelete }: any) {
 				<div className="panel-head">
 					<div>
 						<div className="eyebrow">TRAINING HISTORY</div>
-						<h3>All sessions</h3>
+						<h3>Completed sessions</h3>
 					</div>
 					<span className="pill">{workouts.length} RECORDS</span>
 				</div>
@@ -982,7 +1065,7 @@ function Training({ workouts, onAdd, onDelete }: any) {
 					<Empty
 						icon={Dumbbell}
 						title="No sessions recorded"
-						text="Your training history will appear here once you log your first workout."
+						text="Your completed training history will appear here once you finish a session or log your first workout."
 						action="LOG WORKOUT"
 						onClick={onAdd}
 					/>
