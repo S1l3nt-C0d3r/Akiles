@@ -532,7 +532,7 @@ function Auth({ onAuth }: { onAuth: (t: string) => void }) {
 						athlete you came here to become.
 					</p>
 					<div className="greek-rule">
-						<span>ΑΡΕΤΗ</span>
+						<span>RISE</span>
 					</div>
 				</div>
 				<div className="auth-foot">
