@@ -182,6 +182,8 @@ app.put("/api/profile", auth, (req: Authed, res) => {
 	res.json({ profile: userSummary(req.userId!).profile });
 });
 app.get("/api/workouts", auth, async (req: Authed, res) => {
+	let syncStatus: "ok" | "not_configured" | "failed" = "not_configured";
+	let syncError = "";
 	const email = userSummary(req.userId!).email.toLowerCase();
 	// Pull coach-completed sessions from Kyron. Kyron is the source of truth;
 	// the prefixed ID makes repeated polling idempotent and avoids manual-log collisions.
@@ -217,7 +219,11 @@ app.get("/api/workouts", auth, async (req: Authed, res) => {
 				}
 			});
 			sync(completed);
+			syncStatus = "ok";
 		} catch (error) {
+			syncStatus = "failed";
+			syncError =
+				error instanceof Error ? error.message : "Unknown Kyron sync error";
 			console.error("Could not pull completed Kyron workouts:", error);
 		}
 	}
@@ -226,7 +232,7 @@ app.get("/api/workouts", auth, async (req: Authed, res) => {
 			"SELECT id,title,category,log_date AS date,duration,sets,reps,rounds,rpe,notes,completed FROM workouts WHERE user_id=? ORDER BY log_date DESC,created_at DESC",
 		)
 		.all(req.userId);
-	res.json({ workouts: rows });
+	res.json({ workouts: rows, syncStatus, ...(syncError ? { syncError } : {}) });
 });
 app.post("/api/workouts", auth, (req: Authed, res) => {
 	const b = req.body || {};
@@ -401,6 +407,23 @@ app.get("/api/relationship", auth, async (req: Authed, res) => {
 		});
 	}
 });
+// Coach notes are stored in Kyron. Akiles proxies the authenticated athlete's
+// request to the existing Kyron integration endpoint; no Akiles API URL is needed.
+app.get("/api/coach-notes", auth, async (req: Authed, res) => {
+	try {
+		const email = userSummary(req.userId!).email.toLowerCase();
+		const data = await kyron(`/coach-notes?email=${encodeURIComponent(email)}`);
+		res.json({ notes: data.notes || [], coachName: data.coachName || null });
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "Could not load coach notes from Kyron.";
+		console.error("Could not load Kyron coach notes:", message);
+		res.status(502).json({ error: message });
+	}
+});
+
 app.get("/api/feedback", auth, (req: Authed, res) => {
 	const feedback = db
 		.prepare(

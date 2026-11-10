@@ -192,17 +192,31 @@ function App() {
 				request("/coach-notes", {}, t),
 			]);
 			const [w, c, i, rel, f, n] = results;
-			if (w.status === "fulfilled") setWorkouts(w.value.workouts || []);
+			if (w.status === "fulfilled") {
+				setWorkouts(w.value.workouts || []);
+				if (w.value.syncStatus === "failed" && w.value.syncError) {
+					setError(`Kyron workout sync failed: ${w.value.syncError}`);
+				}
+				if (w.value.syncStatus === "not_configured") {
+					setError(
+						"Kyron workout sync is not configured on the Akiles backend. Check KYRON_API_URL and AKILES_INTEGRATION_KEY.",
+					);
+				}
+			}
 			if (c.status === "fulfilled") setCoaches(c.value.coaches || []);
 			if (i.status === "fulfilled") setInvitations(i.value.invitations || []);
 			if (rel.status === "fulfilled")
 				setRelationship(rel.value.relationship || null);
 			if (f.status === "fulfilled") setFeedback(f.value.feedback || []);
 			if (n.status === "fulfilled") setCoachNotes(n.value.notes || []);
-			if (results.some((r) => r.status === "rejected"))
+			if (results.some((r) => r.status === "rejected")) {
+				const noteFailure = n.status === "rejected";
 				setError(
-					"Some Akiles features could not load. Your account is still signed in.",
+					noteFailure
+						? `Coach notes could not load: ${(n.reason as Error)?.message || "Check the Akiles-to-Kyron integration."}`
+						: "Some Akiles features could not load. Your account is still signed in.",
 				);
+			}
 		} catch (e) {
 			const message = e instanceof Error ? e.message : "Could not load account";
 			setError(message);
