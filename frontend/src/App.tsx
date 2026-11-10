@@ -282,7 +282,7 @@ function App() {
 			<aside className={`sidebar ${mobileNav ? "open" : ""}`}>
 				<div className="brand">
 					<div className="brand-mark">
-						<img src="/akiles-mark.png" />
+						<img src="/Akiles_logo.png" />
 					</div>
 					<div>
 						<div className="brand-name">AKILES</div>
@@ -474,7 +474,7 @@ function Auth({ onAuth }: { onAuth: (t: string) => void }) {
 			<div className="auth-art">
 				<div className="auth-brand">
 					<div className="brand-mark">
-						<img src="/akiles-mark.png" />
+						<img src="/Akiles_logo.png" />
 					</div>
 					<div>
 						<div className="brand-name">AKILES</div>
