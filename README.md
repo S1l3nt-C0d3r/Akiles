@@ -1,5 +1,5 @@
 # ⚔️ AKILES ATHLETE
-### The Athlete Operating System
+### The Combat Athlete Training System
 
 <p align="center">
   <strong>FORGED IN THE ARENA.</strong>
@@ -305,10 +305,10 @@ Akiles/
 - [x] Coach discovery through Kyron
 - [x] Coach-initiated onboarding invitations
 - [x] Coach-athlete relationship integration
-- [ ] Complete bidirectional workout synchronisation
-- [ ] Coach-assigned workout delivery
-- [ ] Reliable offline synchronisation and retry queue
-- [ ] Advanced athlete performance analytics
+- [x] Complete bidirectional workout synchronisation
+- [x] Coach-assigned workout delivery
+- [x] Reliable offline synchronisation and retry queue
+- [x] Advanced athlete performance analytics
 - [ ] Expanded combat sports support
 
 *Roadmap items reflect development priorities and may change.*
@@ -335,6 +335,6 @@ From the first training session to competitive preparation, every workout contri
 
 ### Connect
 
-- **GitHub:** [YOUR_GITHUB_PROFILE]
+- **GitHub:** https://github.com/S1l3nt-C0d3r
 - **Website:** [Areté — Coming Soon]
 - **Companion Platform:** Kyron Coach
